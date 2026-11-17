@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Yönetim</title>
+<style>
+:root{--bg:#f2f1ee;--ink:#141516;--mute:#76736d;--line:#d9d6cf;--card:#fff;--ok:#1f7a4d;--bad:#b3261e}
+@media(prefers-color-scheme:dark){:root{--bg:#121314;--ink:#efede8;--mute:#8d8a84;--line:#2a2b2c;--card:#1b1c1d}}
+*{box-sizing:border-box;margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans-serif;padding:20px;max-width:900px;margin:auto}
+h1{font-size:22px;margin-bottom:4px}h2{font-size:16px;margin:28px 0 10px}
+.mute{color:var(--mute);font-size:13px}
+.box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-top:10px}
+label{display:block;font-size:13px;color:var(--mute);margin:10px 0 4px}
+input,textarea,select{width:100%;font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px}
+textarea{min-height:80px}
+button{font:inherit;font-weight:600;border:0;border-radius:8px;padding:10px 16px;background:var(--ink);color:var(--bg);cursor:pointer}
+button.g{background:none;color:var(--ink);border:1px solid var(--line)}button.d{background:none;color:var(--bad);border:1px solid var(--line)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.grid{display:grid;gap:10px}
+.item{display:grid;grid-template-columns:84px 1fr;gap:12px;align-items:start}
+.item img{width:84px;height:84px;object-fit:cover;border-radius:8px;background:var(--line)}
+.item .f{display:grid;gap:6px}
+.item .row button{padding:6px 10px;font-size:13px}
+#bar{position:sticky;bottom:12px;margin-top:24px;display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 14px;background:var(--ink);color:var(--bg);border-radius:12px}
+#bar button{background:var(--bg);color:var(--ink)}
+#msg{font-size:13px}
+.hide{display:none}
+</style>
+</head>
+<body>
+<h1>Portfolyo yönetimi</h1>
+<p class="mute">Değişiklikler GitHub deponuza kaydedilir ve site birkaç dakikada güncellenir.</p>
+
+<div id="login" class="box">
+ <b>GitHub bağlantısı</b>
+ <label>Depo (kullanıcı/depo-adı)</label><input id="repo" placeholder="muratdagasan/muratdagasan.github.io">
+ <label>Dal</label><input id="branch" value="main">
+ <label>Erişim anahtarı (fine-grained token, bu depo için Contents: Read and write)</label><input id="tok" type="password" autocomplete="off">
+ <div class="row" style="margin-top:14px"><button id="go">Bağlan</button></div>
+ <p class="mute" style="margin-top:10px">Anahtar yalnızca bu tarayıcıda saklanır. Başka kimse değişiklik yapamaz.</p>
+</div>
+
+<div id="app" class="hide">
+ <h2>Fotoğraf ekle</h2>
+ <div class="box">
+  <input id="files" type="file" accept="image/*" multiple>
+  <div class="row" style="margin-top:10px"><select id="newcat" style="width:auto"></select><span class="mute">Fotoğraflar 2000 px'e küçültülerek yüklenir.</span></div>
+ </div>
+
+ <h2>Fotoğraflar</h2>
+ <div id="list" class="grid"></div>
+
+ <h2>Kategoriler</h2>
+ <div class="box"><input id="cats"><p class="mute" style="margin-top:6px">Virgülle ayır: Portre, Doğa, Sokak</p></div>
+
+ <h2>Site bilgileri</h2>
+ <div class="box">
+  <label>İsim</label><input id="s_name">
+  <label>Alt başlık</label><input id="s_tagline">
+  <label>Hakkımda</label><textarea id="s_bio"></textarea>
+  <label>Instagram kullanıcı adı</label><input id="s_instagram">
+  <label>E-posta</label><input id="s_email">
+ </div>
+
+ <div id="bar"><span id="msg">Değişiklik yok</span><div class="row"><button id="out" class="g" style="background:none;color:inherit;border:1px solid #888">Çıkış</button><button id="save">Yayınla</button></div></div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+let cfg=JSON.parse(localStorage.getItem('gh')||'null'),D,sha,dirty=false,toDelete=[];
+const msg=(t,c)=>{$('#msg').textContent=t;$('#msg').style.color=c||''};
+const b64=s=>btoa(unescape(encodeURIComponent(s)));
+async function gh(path,method='GET',body){
+ const r=await fetch(`https://api.github.com/repos/${cfg.repo}/contents/${path}`+(method==='GET'?`?ref=${cfg.branch}`:''),{method,headers:{Authorization:'Bearer '+cfg.tok,Accept:'application/vnd.github+json'},body:body?JSON.stringify({branch:cfg.branch,...body}):undefined});
+ if(!r.ok&&!(method==='GET'&&r.status===404))throw new Error(r.status+' '+(await r.text()).slice(0,120));
+ return r.status===404?null:r.json();
+}
+$('#go').onclick=()=>{cfg={repo:$('#repo').value.trim(),branch:$('#branch').value.trim()||'main',tok:$('#tok').value.trim()};start()};
+$('#out').onclick=()=>{localStorage.removeItem('gh');location.reload()};
+async function start(){
+ try{
+  const r=await gh('data.json');
+  if(!r)throw new Error('data.json bulunamadı');
+  sha=r.sha;D=JSON.parse(decodeURIComponent(escape(atob(r.content.replace(/\n/g,'')))));
+  localStorage.setItem('gh',JSON.stringify(cfg));
+  $('#login').classList.add('hide');$('#app').classList.remove('hide');fill();
+ }catch(e){alert('Bağlanamadı: '+e.message);}
+}
+function fill(){
+ for(const k in D.site)if($('#s_'+k))$('#s_'+k).value=D.site[k];
+ $('#cats').value=D.categories.join(', ');
+ cats();render();
+}
+function cats(){$('#newcat').innerHTML=D.categories.map(c=>`<option>${c}</option>`).join('')}
+function mark(){dirty=true;msg('Kaydedilmemiş değişiklikler var')}
+function render(){
+ $('#list').innerHTML=D.photos.length?D.photos.map((p,i)=>`<div class="box item"><img src="${p._url||'https://raw.githubusercontent.com/'+cfg.repo+'/'+cfg.branch+'/photos/'+p.file}"><div class="f">
+ <input data-i="${i}" data-k="title" value="${(p.title||'').replace(/"/g,'&quot;')}" placeholder="Başlık">
+ <select data-i="${i}" data-k="cat">${D.categories.map(c=>`<option ${c===p.cat?'selected':''}>${c}</option>`).join('')}</select>
+ <div class="row"><button class="g" data-a="up" data-i="${i}">↑</button><button class="g" data-a="dn" data-i="${i}">↓</button><button class="d" data-a="rm" data-i="${i}">Sil</button></div></div></div>`).join(''):'<p class="mute">Henüz fotoğraf yok.</p>';
+}
+$('#list').oninput=e=>{const t=e.target;if(t.dataset.k){D.photos[t.dataset.i][t.dataset.k]=t.value;mark()}};
+$('#list').onclick=e=>{const b=e.target.closest('button');if(!b)return;const i=+b.dataset.i,a=b.dataset.a,P=D.photos;
+ if(a==='rm'&&confirm('Bu fotoğraf silinsin mi?')){toDelete.push(P[i].file);P.splice(i,1)}
+ else if(a==='up'&&i>0)[P[i-1],P[i]]=[P[i],P[i-1]];
+ else if(a==='dn'&&i<P.length-1)[P[i+1],P[i]]=[P[i],P[i+1]];
+ else return;mark();render()};
+$('#cats').oninput=()=>{D.categories=$('#cats').value.split(',').map(s=>s.trim()).filter(Boolean);cats();render();mark()};
+document.querySelectorAll('[id^=s_]').forEach(el=>el.oninput=()=>{D.site[el.id.slice(2)]=el.value;mark()});
+function resize(file){return new Promise(res=>{const im=new Image();im.onload=()=>{const m=2000,k=Math.min(1,m/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=im.width*k;c.height=im.height*k;c.getContext('2d').drawImage(im,0,0,c.width,c.height);c.toBlob(b=>{const r=new FileReader();r.onload=()=>res({data:r.result.split(',')[1],url:URL.createObjectURL(b)});r.readAsDataURL(b)},'image/jpeg',.86)};im.src=URL.createObjectURL(file)})}
+$('#files').onchange=async e=>{
+ const fs=[...e.target.files];let n=0;
+ for(const f of fs){msg(`Hazırlanıyor ${++n}/${fs.length}…`);const r=await resize(f);
+  const id=Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+  D.photos.unshift({id,file:id+'.jpg',title:f.name.replace(/\.[^.]+$/,'').replace(/[-_]+/g,' '),cat:$('#newcat').value||D.categories[0]||'',_data:r.data,_url:r.url});}
+ e.target.value='';mark();render();
+};
+$('#save').onclick=async()=>{
+ try{
+  const ups=D.photos.filter(p=>p._data);let n=0;
+  for(const p of ups){msg(`Yükleniyor ${++n}/${ups.length}…`);await gh('photos/'+p.file,'PUT',{message:'Fotoğraf ekle',content:p._data})}
+  for(const f of toDelete){const r=await gh('photos/'+f);if(r)await gh('photos/'+f,'DELETE',{message:'Fotoğraf sil',sha:r.sha})}
+  toDelete=[];
+  const clean={...D,photos:D.photos.map(({_data,_url,...p})=>p)};
+  msg('Kaydediliyor…');
+  const r=await gh('data.json','PUT',{message:'Portfolyoyu güncelle',content:b64(JSON.stringify(clean,null,2)),sha});
+  sha=r.content.sha;D.photos.forEach(p=>{delete p._data});dirty=false;msg('Yayınlandı. Site 1–2 dakikada güncellenir.','#7fe0a8');
+ }catch(e){msg('Hata: '+e.message,'#ff9b94')}
+};
+addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue=''}});
+if(cfg){$('#repo').value=cfg.repo;$('#branch').value=cfg.branch;$('#tok').value=cfg.tok;start()}
+</script>
+</body>
+</html>
